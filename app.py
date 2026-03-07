@@ -29,33 +29,49 @@ def get_data():
 data = get_data()
 
 if data:
-    # 4. Dashboard Metrics
-    total_debit = sum(item['amount'] for item in data if item['transaction_type'] == 'debit')
-    total_credit = sum(item['amount'] for item in data if item['transaction_type'] == 'credit')
+    # 4. --- ADVANCED MONTHLY METRICS ---
+    df_metrics = pd.DataFrame(data)
+    df_metrics['transaction_date'] = pd.to_datetime(df_metrics['transaction_date'])
     
+    # Get current and last month periods
+    current_month_period = pd.Timestamp.now().to_period('M')
+    last_month_period = (pd.Timestamp.now() - pd.DateOffset(months=1)).to_period('M')
+
+    # Calculate Totals for Current Month
+    cur_month_debit = df_metrics[(df_metrics['transaction_date'].dt.to_period('M') == current_month_period) & (df_metrics['transaction_type'] == 'debit')]['amount'].sum()
+    cur_month_credit = df_metrics[(df_metrics['transaction_date'].dt.to_period('M') == current_month_period) & (df_metrics['transaction_type'] == 'credit')]['amount'].sum()
+
+    # Calculate Totals for Last Month
+    last_month_debit = df_metrics[(df_metrics['transaction_date'].dt.to_period('M') == last_month_period) & (df_metrics['transaction_type'] == 'debit')]['amount'].sum()
+    
+    # Calculate Percentage Change for Outflow
+    if last_month_debit > 0:
+        delta_val = ((cur_month_debit - last_month_debit) / last_month_debit) * 100
+        delta_text = f"{delta_val:+.1f}% vs last month"
+    else:
+        delta_text = "New data track" # Shows this if Feb has 0 transactions
+
+    # Display the Metrics with Deltas
     m1, m2 = st.columns(2)
-    m1.metric("Total Outflow", f"₦{total_debit:,.2f}")
-    m2.metric("Total Inflow", f"₦{total_credit:,.2f}")
+    # The 'delta_color' is 'inverse' because for spending, an increase (positive) is usually "bad" (red)
+    m1.metric("Total Outflow", f"₦{cur_month_debit:,.2f}", delta=delta_text, delta_color="inverse")
+    m2.metric("Total Inflow", f"₦{cur_month_credit:,.2f}")
     
     # 5. --- AI SPENDING INSIGHTS (Week-to-Date) ---
     st.markdown("---")
     st.subheader("🧠 Pacing Insights")
     
-    # Convert data to a Pandas DataFrame to do date math easily
+    # Convert data to a Pandas DataFrame for calculations
     df = pd.DataFrame(data)
-    
-    # We only care about money leaving your account (debits) for spending alerts
     df_spend = df[df['transaction_type'] == 'debit'].copy()
     
     if not df_spend.empty:
-        # Ensure dates are recognized properly (FIXED: changed 'date' to 'transaction_date')
         df_spend['transaction_date'] = pd.to_datetime(df_spend['transaction_date'])
         
-        # Get today's time and day of the week
         today = dt.datetime.now()
         current_year = today.year
         current_week = today.isocalendar()[1]
-        day_of_week = today.weekday() # Monday = 0, Sunday = 6
+        day_of_week = today.weekday() 
         
         # Calculate CURRENT Week-to-Date (WTD) spend
         current_wtd_df = df_spend[(df_spend['transaction_date'].dt.year == current_year) & 
@@ -63,41 +79,32 @@ if data:
                                   (df_spend['transaction_date'].dt.weekday <= day_of_week)]
         current_wtd_spend = current_wtd_df['amount'].sum()
         
-        # Calculate PAST Week-to-Date spend (up to this exact day in previous weeks)
+        # Calculate PAST Week-to-Date spend
         past_wtd_df = df_spend[(df_spend['transaction_date'].dt.isocalendar().week != current_week) & 
                                (df_spend['transaction_date'].dt.weekday <= day_of_week)]
         
-        # The Alert Engine
         if past_wtd_df.empty:
             st.info(f"📊 **Gathering data:** You've spent **₦{current_wtd_spend:,.2f}** so far this week. I'm learning your habits to give you pacing alerts next week!")
         else:
-            # Group past data by week to find the average
             past_weeks_grouped = past_wtd_df.groupby([past_wtd_df['transaction_date'].dt.year, past_wtd_df['transaction_date'].dt.isocalendar().week])['amount'].sum()
             avg_past_wtd_spend = past_weeks_grouped.mean()
             
             if current_wtd_spend > avg_past_wtd_spend:
-                st.error(f"⚠️ **Careful!** You've spent **₦{current_wtd_spend:,.2f}** this week. You are spending more than your usual ₦{avg_past_wtd_spend:,.2f} by this time of the week.")
+                st.error(f"⚠️ **Careful!** You've spent **₦{current_wtd_spend:,.2f}** this week. You are spending more than your usual ₦{avg_past_wtd_spend:,.2f} by this time.")
             elif current_wtd_spend < avg_past_wtd_spend:
-                st.success(f"✅ **Well done!** You've spent **₦{current_wtd_spend:,.2f}** this week. You have spent lesser than your usual ₦{avg_past_wtd_spend:,.2f} around this time.")
+                st.success(f"✅ **Well done!** You've spent **₦{current_wtd_spend:,.2f}** this week. You have spent lesser than your usual ₦{avg_past_wtd_spend:,.2f}.")
             else:
                 st.info(f"⚖️ **Right on track.** You are matching your usual spending pace.")
                 
     # --- MONTHLY SPENDING TREND ---
     st.write("### 📊 Monthly Spending Trend")
-    
-    # 1. Tell Pandas to extract just the Month and Year from the exact dates
     df_spend['month'] = df_spend['transaction_date'].dt.to_period('M').astype(str)
-    
-    # 2. Tell Pandas to group everything by that new 'month' column and add up the amounts
     monthly_spend = df_spend.groupby('month')['amount'].sum().reset_index()
-    
-    # 3. Tell Streamlit to draw a bar chart using the Pandas math!
     st.bar_chart(data=monthly_spend, x='month', y='amount')
     
     # 6. --- TRANSACTION LEDGER ---
     st.markdown("---")
     st.write("### 📜 Transaction Ledger")
-    # Sort by date so newest is on top, and hide the index for a cleaner look
     st.dataframe(df.sort_values(by='transaction_date', ascending=False), use_container_width=True, hide_index=True)
 
 else:
