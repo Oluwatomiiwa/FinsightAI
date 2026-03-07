@@ -1,0 +1,189 @@
+{
+  "name": "FINSIGHT_ALERTS",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "months",
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7afb07cc-79ca-4316-ba17-b97dc94b8a82",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transactions",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "transaction_date",
+              "condition": "gte",
+              "keyValue": "={{ $today.minus({ months: 1 }).startOf('month').toISODate() }}"
+            },
+            {
+              "keyName": "transaction_date",
+              "condition": "lte",
+              "keyValue": "={{ $today.minus({ months: 1 }).endOf('month').toISODate() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "0ee2628b-c995-4e4f-aa1e-cd769dca6f8d",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "5Kr8KT1v36fdJoEh",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transactions",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "transaction_date",
+              "condition": "gte",
+              "keyValue": "={{ $today.minus({ months: 2 }).startOf('month').toISODate() }}"
+            },
+            {
+              "keyName": "transaction_date",
+              "condition": "lte",
+              "keyValue": "={{ $today.minus({ months: 2 }).endOf('month').toISODate() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "1f1bdf6a-07d5-4f5c-b1a9-65cf3e275939",
+      "name": "Get many rows1",
+      "executeOnce": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "5Kr8KT1v36fdJoEh",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get the data from the connected nodes\n// Note: n8n usually passes the previous node data as 'items'\nconst lastMonthTotal = items.reduce((sum, item) => sum + (item.json.amount || 0), 0);\n\n// 2. For testing, we will set the 'previous' total to a fixed number \n// since we don't have January/February data yet\nconst previousMonthTotal = 35000; \n\n// 3. Calculate the math\nconst diff = lastMonthTotal - previousMonthTotal;\nconst absDiff = Math.abs(diff);\nconst status = diff > 0 ? \"more 📈\" : \"less 📉\";\n\nlet percentageText = \"\";\nif (previousMonthTotal > 0) {\n    const percent = ((diff / previousMonthTotal) * 100).toFixed(1);\n    percentageText = ` (${percent > 0 ? '+' : ''}${percent}%)`;\n}\n\n// 4. Final Output\nreturn {\n  text: `📊 *Monthly Financial Report*\\n\\n` +\n        `Last month, you spent *₦${lastMonthTotal.toLocaleString()}*.\\n` +\n        `That is *₦${absDiff.toLocaleString()}* ${status}${percentageText} than the month before!`\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "99e05974-f0dc-456f-81d2-58f31ea6f366",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "931559582",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "9464c9d6-1085-411d-9e8a-ea2a635375d7",
+      "name": "Send a text message",
+      "webhookId": "535b5456-c01e-4075-9a65-bca386f8f3e8",
+      "credentials": {
+        "telegramApi": {
+          "id": "KRdGZx6rHaMqO6mJ",
+          "name": "Telegram account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Get many rows1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "01f7bbc1-b464-4bfe-be82-6915ead110dc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b8f45234b8538009e5da968e40f9eddac7fadd57dfa035880149bb3474e32fde"
+  },
+  "id": "khyfO92DdxcqIDI5",
+  "tags": []
+}

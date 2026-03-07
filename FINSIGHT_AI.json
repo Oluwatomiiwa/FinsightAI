@@ -1,0 +1,372 @@
+{
+  "name": "FINSIGHT_AI",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyHour"
+            }
+          ]
+        },
+        "filters": {
+          "readStatus": "both",
+          "sender": "no-reply@opay-nigeria.com"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        -96
+      ],
+      "id": "3921ae6b-4b7b-40d1-aafc-eb7e4dd64e77",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "E1NLuLBYq6w0KC6v",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a financial data extraction assistant. Your job is to read the following bank transaction email and extract the relevant data into a strict JSON format.\n\nEmail text:\n{{ $json.text }}\n\nExtract the following information:\n1. \"transaction_date\": The date of the transaction (Format: YYYY-MM-DD).\n2. \"amount\": The exact monetary amount as a number (no currency symbols).\n3. \"merchant_name\": The name of the person or business the money went to or came from.\n4. \"transaction_type\": Must be either 'credit' (money in) or 'debit' (money out).\n5. \"category\": Make a logical guess (e.g., 'Food', 'Transport', 'Salary', 'Transfer').\n\nRespond ONLY with valid JSON. Do not include markdown code blocks (like ```json), and do not include any introductory or closing text.\nRule for transaction_type: If the email says \"Your transfer of... is successful\" or indicates money leaving the account, label it as \"debit\". If it indicates money received or deposited, label it as \"credit\"."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -96
+      ],
+      "id": "fb526580-d01f-49dc-960c-8d909c181b17",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "W2is2XiGYBGdTuIY",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        -96
+      ],
+      "id": "723ac751-a31c-41d0-a1fd-7105f8ec3b94",
+      "name": "Get a message",
+      "webhookId": "e66e09c5-0743-4e2a-82b5-9d6893ec253a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "E1NLuLBYq6w0KC6v",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "transactions",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "transaction_date",
+              "fieldValue": "={{ $json.transaction_date }}"
+            },
+            {
+              "fieldId": "amount",
+              "fieldValue": "={{ $json.amount }}"
+            },
+            {
+              "fieldId": "merchant_name",
+              "fieldValue": "={{ $json.merchant_name }}"
+            },
+            {
+              "fieldId": "category",
+              "fieldValue": "={{ $json.category }}"
+            },
+            {
+              "fieldId": "transaction_type",
+              "fieldValue": "={{ $json.transaction_type }}"
+            },
+            {
+              "fieldId": "message_id",
+              "fieldValue": "={{ $('Gmail Trigger').item.json.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1024,
+        -96
+      ],
+      "id": "96ed52d3-f5c6-48b9-8a02-2c7b3e95e1ad",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "5Kr8KT1v36fdJoEh",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Grab the raw text string from Gemini's nested output structure\nlet aiText = $input.first().json.content.parts[0].text; \n\n// Strip out any markdown formatting the AI might have added\naiText = aiText.replace(/```json/gi, '').replace(/```/gi, '');\n\n// Convert that text string into a beautiful, structured JSON object\nlet cleanData = JSON.parse(aiText);\n\n// Send the clean data to the next node (Supabase)\nreturn { json: cleanData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -96
+      ],
+      "id": "305539b1-dad2-45c8-a058-fe839f8ff6da",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transactions",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "created_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.startOf('week').toFormat('yyyy-MM-dd') }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        -96
+      ],
+      "id": "03147ac7-21bb-42e4-9b6b-459a44ed838d",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "5Kr8KT1v36fdJoEh",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "aggregation": "sum",
+              "field": "amount"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1.1,
+      "position": [
+        1472,
+        -96
+      ],
+      "id": "f85f0164-3ea0-4ab5-ab79-5a90589c50fe",
+      "name": "Summarize"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8c08f0d0-867a-4529-a547-2c647c396ddb",
+              "leftValue": "={{ $json.sum_amount }}",
+              "rightValue": 30000,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1696,
+        -96
+      ],
+      "id": "fcaabd64-b138-4736-b9dc-2dc88509c5d1",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "931559582",
+        "text": "Use Your Head, You done dey overspend o.  You sef see now https://finsightai-axia.streamlit.app/",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        -176
+      ],
+      "id": "1680ee99-c739-4e2a-834c-26cd4122f983",
+      "name": "Send a text message",
+      "webhookId": "28649858-2858-4c31-b0e3-5ef1f333bf5b",
+      "credentials": {
+        "telegramApi": {
+          "id": "KRdGZx6rHaMqO6mJ",
+          "name": "Telegram account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Create a row": [
+      {
+        "json": {
+          "id": 24,
+          "transaction_date": "2026-03-07",
+          "amount": 500,
+          "merchant_name": "OLUWATOMIWA EMMANUEL ORESANWO",
+          "transaction_type": "debit",
+          "category": "Transfer",
+          "message_id": "19cc79696eea1a19",
+          "created_at": "2026-03-07T09:18:46.111824+00:00"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a message": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "67fae066-cb5a-4b06-b324-8bff50e1f43c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b8f45234b8538009e5da968e40f9eddac7fadd57dfa035880149bb3474e32fde"
+  },
+  "id": "DQqzCSwwh7CSCe89",
+  "tags": []
+}
